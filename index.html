@@ -1,97 +1,101 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Face Mesh Detection</title>
-
-    <style>
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            background: #111;
-        }
-        canvas, video {
-            position: absolute;
-            transform: scaleX(-1); /* effet miroir */
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <title>Face Mesh Detection</title>
+  <style>
+    body {
+      text-align: center;
+      background: #111;
+      color: #fff;
+      font-family: Arial, sans-serif;
+    }
+    #videoElement, #outputCanvas {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+    #videoElement {
+      opacity: 0; /* On n'affiche pas la vidéo brut */
+    }
+  </style>
 </head>
 <body>
 
-<video id="video" autoplay playsinline width="640" height="480"></video>
-<canvas id="output" width="640" height="480"></canvas>
+  <h1>Face Mesh Detection (TFJS + Mediapipe)</h1>
+  <video id="videoElement" autoplay playsinline></video>
+  <canvas id="outputCanvas"></canvas>
 
-<!-- ✅ TFJS -->
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.14.0/dist/tf.min.js"></script>
+  <!-- ✅ Dépendances TFJS -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.14.0/dist/tf.min.js"></script>
 
-<!-- ✅ Dépendances Mediapipe -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <!-- ✅ Dépendances Mediapipe FaceMesh -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
-<!-- ✅ Modèle TFJS Face Landmarks -->
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@1.0.6/dist/face-landmarks-detection.min.js"></script>
+  <!-- ✅ Modèle correct : face-landmarks-detection v1.0.6 -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@1.0.6/dist/face-landmarks-detection.min.js"></script>
 
-<script>
-(async () => {
-    const video = document.getElementById("video");
-    const canvas = document.getElementById("output");
-    const ctx = canvas.getContext("2d");
+  <script>
+    const video = document.getElementById('videoElement');
+    const canvas = document.getElementById('outputCanvas');
+    const ctx = canvas.getContext('2d');
 
-    // ✅ Démarrer la webcam
-    async function startCamera() {
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: 640, height: 480 },
-            audio: false,
-        });
-        video.srcObject = stream;
-        return new Promise(resolve => { video.onloadedmetadata = () => resolve(); });
-    }
+    async function main() {
+      // ✅ Accès webcam
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
 
-    await startCamera();
+      await new Promise(resolve => {
+        video.onloadedmetadata = () => {
+          video.play();
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          resolve();
+        };
+      });
 
-    // ✅ Charger le modèle FaceMesh via TensorFlow JS
-    const model = await faceLandmarksDetection.load(
+      // ✅ Chargement du modèle FaceMesh (1.0.6)
+      const model = await faceLandmarksDetection.load(
         faceLandmarksDetection.SupportedPackages.mediapipeFaceMesh,
         {
-            maxFaces: 1,
-            shouldLoadIrisModel: true,
+          maxFaces: 1,
+          shouldLoadIrisModel: true
         }
-    );
+      );
 
-    console.log("✅ FaceMesh chargé !");
-
-    // ✅ Loop d’analyse
-    async function detect() {
-        const predictions = await model.estimateFaces({
-            input: video,
-            flipHorizontal: true
+      // ✅ Loop de rendu
+      async function render() {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const faces = await model.estimateFaces({
+          input: video,
+          flipHorizontal: true
         });
 
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "#00ffea";
+        ctx.fillStyle = "#00ffea";
 
-        if (predictions.length > 0) {
-            predictions.forEach(face => {
-                const keypoints = face.scaledMesh;
+        if (faces.length > 0) {
+          const keypoints = faces[0].scaledMesh;
 
-                ctx.fillStyle = "cyan";
-                keypoints.forEach(([x, y]) => {
-                    ctx.beginPath();
-                    ctx.arc(x, y, 1.5, 0, 2 * Math.PI);
-                    ctx.fill();
-                });
-            });
+          keypoints.forEach(point => {
+            ctx.beginPath();
+            ctx.arc(point[0], point[1], 1.5, 0, 2 * Math.PI);
+            ctx.fill();
+          });
         }
 
-        requestAnimationFrame(detect);
+        requestAnimationFrame(render);
+      }
+
+      render();
     }
 
-    detect();
-})();
-</script>
+    main();
+  </script>
 
 </body>
-</html>
+</html> 
