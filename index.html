@@ -1,211 +1,97 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>Mange le fruit 🍎 (mobile fixe)</title>
-<style>
-body {
-  margin: 0; background: #081422; color: white; font-family: system-ui, sans-serif;
-  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
-}
-h1 { font-size: 1.2rem; margin: 12px; text-align: center; }
-#stage {
-  position: relative;
-  width: 100%;
-  max-width: 480px;
-  aspect-ratio: 3/4;
-  overflow: hidden;
-  border-radius: 12px;
-  background: black;
-}
-video {
-  width: 100%; height: 100%;
-  object-fit: cover;
-  transform: scaleX(-1);
-  border-radius: 12px;
-}
-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-#hud, #scoreHud {
-  position: absolute; top: 8px; background: rgba(0,0,0,0.5); padding: 6px 10px; border-radius: 8px; font-weight: bold;
-}
-#hud { left: 8px; }
-#scoreHud { right: 8px; }
-button {
-  margin-top: 10px;
-  padding: 10px 16px;
-  background: #22c55e; border: none; border-radius: 8px;
-  color: #051810; font-weight: bold;
-  font-size: 1rem;
-}
-#msg {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  background: rgba(0,0,0,0.7); text-align: center; font-size: 1.1rem; font-weight: bold; border-radius: 12px;
-  padding: 10px;
-}
-</style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Face Mesh Detection</title>
+
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #111;
+        }
+        canvas, video {
+            position: absolute;
+            transform: scaleX(-1); /* effet miroir */
+        }
+    </style>
 </head>
 <body>
-<h1>Mange le fruit 🍓 (mobile)</h1>
-<div id="stage">
-  <video id="video" autoplay playsinline muted></video>
-  <canvas id="overlay"></canvas>
-  <div id="hud">30s</div>
-  <div id="scoreHud">0</div>
-  <div id="msg">Appuie sur "Démarrer" pour jouer</div>
-</div>
-<button id="startBtn">Démarrer</button>
+
+<video id="video" autoplay playsinline width="640" height="480"></video>
+<canvas id="output" width="640" height="480"></canvas>
+
+<!-- ✅ TFJS -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.14.0/dist/tf.min.js"></script>
+
+<!-- ✅ Dépendances Mediapipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+<!-- ✅ Modèle TFJS Face Landmarks -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@1.0.6/dist/face-landmarks-detection.min.js"></script>
 
 <script>
-const msg=document.getElementById("msg");
-const video=document.getElementById("video");
-const startBtn=document.getElementById("startBtn");
-const canvas=document.getElementById("overlay");
-const ctx=canvas.getContext("2d");
-canvas.width=480;canvas.height=640;
+(async () => {
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("output");
+    const ctx = canvas.getContext("2d");
 
-const FRUITS=['apple.png','banana.png','orange.png','coconut.png', 'pineapple.png', 'watermelon.png'];
-let model, stream, fruitImgs=[];
-let running=false, currentFruit=null, score=0;
-
-function show(text){msg.style.display="flex";msg.innerHTML=text;}
-function hideMsg(){msg.style.display="none";}
-function logStep(text){show(`<div>${text}</div>`);console.log(text);}
-
-// Charger dynamiquement un script
-function loadScript(src){
-  return new Promise((res,rej)=>{
-    const s=document.createElement('script');
-    s.src=src;
-    s.onload=res;
-    s.onerror=()=>rej(new Error('Erreur de chargement: '+src));
-    document.head.appendChild(s);
-  });
-}
-
-async function initCamera(){
-  try{
-    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"},audio:false});
-    video.srcObject=stream;
-    await new Promise(r=>video.onloadedmetadata=r);
-    logStep("✅ Caméra prête !");
-  }catch(e){
-    show(`<div>⚠️ Impossible d'accéder à la caméra.<br>${e.message}</div>`);
-    throw e;
-  }
-}
-
-async function loadModel(){
-  if(!window.tf)
-    await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.14.0/dist/tf.min.js");
-  if(!window.faceLandmarksDetection)
-    await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@1.0.6/dist/face-landmarks-detection.min.js");
-
-  model = await faceLandmarksDetection.createDetector(
-    faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh,
-    {
-      runtime: 'mediapipe',
-      solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh'
-    }
-  );
-
-  logStep("✅ Modèle chargé !");
-}
-
-async function loadFruits(){
-  const arr=[];
-  for(const src of FRUITS){
-    const img=new Image();
-    img.src=src;
-    await new Promise(ok=>{img.onload=ok;img.onerror=ok;});
-    arr.push(img);
-  }
-  fruitImgs=arr;
-  logStep("✅ Fruits prêts !");
-}
-
-function spawnFruit(){
-  const img=fruitImgs[Math.floor(Math.random()*fruitImgs.length)];
-  const w=100,h=100;
-  const x=Math.random()*(canvas.width-w);
-  const y=Math.random()*(canvas.height-h-80)+80;
-  return {img,x,y,w,h};
-}
-
-const UPPER=[13,0,267,37,39,40,185,61,191];
-const LOWER=[14,17,84,181,91,146,178,88,95];
-function avg(landmarks, list){let x=0,y=0;for(const i of list){x+=landmarks[i][0];y+=landmarks[i][1];}return [x/list.length,y/list.length];}
-function mouthOpenRatio(landmarks){const [ux,uy]=avg(landmarks,UPPER);const [lx,ly]=avg(landmarks,LOWER);return (ly-uy)/canvas.height;}
-function mouthCenter(landmarks){const [ux,uy]=avg(landmarks,UPPER);const [lx,ly]=avg(landmarks,LOWER);return [(ux+lx)/2,(uy+ly)/2];}
-
-function drawFrame(landmarks){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(currentFruit) ctx.drawImage(currentFruit.img,currentFruit.x,currentFruit.y,currentFruit.w,currentFruit.h);
-  if(landmarks){
-    const [mx,my]=mouthCenter(landmarks);
-    ctx.fillStyle="rgba(0,255,0,0.2)";
-    ctx.beginPath();ctx.arc(canvas.width-mx,my,20,0,Math.PI*2);ctx.fill();
-  }
-}
-
-async function gameLoop(){
-  const startTime=performance.now();
-  async function step(now){
-    if(!running) return;
-    const preds = await model.estimateFaces(video);
-    let landmarks=null;
-    if (preds.length > 0 && preds[0].keypoints) {
-      landmarks = preds[0].keypoints.map(p => [p.x * canvas.width, p.y * canvas.height]);
+    // ✅ Démarrer la webcam
+    async function startCamera() {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 640, height: 480 },
+            audio: false,
+        });
+        video.srcObject = stream;
+        return new Promise(resolve => { video.onloadedmetadata = () => resolve(); });
     }
 
-    if(landmarks){
-      const ratio=mouthOpenRatio(landmarks);
-      const [mx,my]=mouthCenter(landmarks);
-      const cx=canvas.width-mx,cy=my;
-      if(ratio>0.3 && currentFruit && cx>currentFruit.x && cx<currentFruit.x+currentFruit.w && cy>currentFruit.y && cy<currentFruit.y+currentFruit.h){
-        score++;
-        document.getElementById("scoreHud").textContent=score;
-        currentFruit=spawnFruit();
-      }
+    await startCamera();
+
+    // ✅ Charger le modèle FaceMesh via TensorFlow JS
+    const model = await faceLandmarksDetection.load(
+        faceLandmarksDetection.SupportedPackages.mediapipeFaceMesh,
+        {
+            maxFaces: 1,
+            shouldLoadIrisModel: true,
+        }
+    );
+
+    console.log("✅ FaceMesh chargé !");
+
+    // ✅ Loop d’analyse
+    async function detect() {
+        const predictions = await model.estimateFaces({
+            input: video,
+            flipHorizontal: true
+        });
+
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        if (predictions.length > 0) {
+            predictions.forEach(face => {
+                const keypoints = face.scaledMesh;
+
+                ctx.fillStyle = "cyan";
+                keypoints.forEach(([x, y]) => {
+                    ctx.beginPath();
+                    ctx.arc(x, y, 1.5, 0, 2 * Math.PI);
+                    ctx.fill();
+                });
+            });
+        }
+
+        requestAnimationFrame(detect);
     }
 
-    drawFrame(landmarks);
-    const remain=30-Math.floor((now-startTime)/1000);
-    document.getElementById("hud").textContent=`${remain}s`;
-    if(remain<=0){
-      running=false;
-      show(`<div>⏰ Temps écoulé !<br>${score} fruits mangés 🍌<br><button onclick="hideMsg();startGame();">Rejouer</button></div>`);
-      return;
-    }
-    requestAnimationFrame(step);
-  }
-  requestAnimationFrame(step);
-}
-
-async function startGame(){
-  if(!model || !fruitImgs.length) return;
-  hideMsg();
-  score=0;document.getElementById("scoreHud").textContent="0";
-  running=true;
-  currentFruit=spawnFruit();
-  gameLoop();
-}
-
-startBtn.onclick=async ()=>{
-  startBtn.disabled=true;
-  try{
-    logStep("🎥 Initialisation de la caméra...");
-    await initCamera();
-    logStep("📦 Chargement du modèle...");
-    await loadModel();
-    logStep("🍎 Chargement des fruits...");
-    await loadFruits();
-    show("✅ Prêt à jouer !<br><button onclick='hideMsg();startGame()'>Commencer</button>");
-  }catch(e){
-    show(`<div>❌ Erreur : ${e.message}</div>`);
-  }
-  startBtn.disabled=false;
-};
+    detect();
+})();
 </script>
+
 </body>
 </html>
