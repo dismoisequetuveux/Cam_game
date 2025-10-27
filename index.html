@@ -66,7 +66,7 @@ canvas.width=480;canvas.height=640;
 
 const FRUITS=['apple.png','banana.png','orange.png','coconut.png', 'pineapple.png', 'watermelon.png'];
 let model, stream, fruitImgs=[];
-let running=false, currentFruit=null, score=0, timeLeft=30;
+let running=false, currentFruit=null, score=0;
 
 function show(text){msg.style.display="flex";msg.innerHTML=text;}
 function hideMsg(){msg.style.display="none";}
@@ -152,24 +152,31 @@ async function gameLoop(){
   const startTime=performance.now();
   async function step(now){
     if(!running) return;
-    const preds=await model.estimateFaces(video);
+    const preds = await model.estimateFaces(video);
     let landmarks=null;
-    if(preds.length>0 && preds[0].keypoints3D){
-      landmarks=preds[0].keypoints.map(p=>[p.x*canvas.width,p.y*canvas.height]);
+    if (preds.length > 0 && preds[0].keypoints) {
+      landmarks = preds[0].keypoints.map(p => [p.x * canvas.width, p.y * canvas.height]);
     }
+
     if(landmarks){
       const ratio=mouthOpenRatio(landmarks);
       const [mx,my]=mouthCenter(landmarks);
       const cx=canvas.width-mx,cy=my;
       if(ratio>0.3 && currentFruit && cx>currentFruit.x && cx<currentFruit.x+currentFruit.w && cy>currentFruit.y && cy<currentFruit.y+currentFruit.h){
-        score++;document.getElementById("scoreHud").textContent=score;
+        score++;
+        document.getElementById("scoreHud").textContent=score;
         currentFruit=spawnFruit();
       }
     }
+
     drawFrame(landmarks);
     const remain=30-Math.floor((now-startTime)/1000);
     document.getElementById("hud").textContent=`${remain}s`;
-    if(remain<=0){running=false;show(`<div>⏰ Temps écoulé !<br>${score} fruits mangés 🍌<br><button onclick="hideMsg();startGame();">Rejouer</button></div>`);return;}
+    if(remain<=0){
+      running=false;
+      show(`<div>⏰ Temps écoulé !<br>${score} fruits mangés 🍌<br><button onclick="hideMsg();startGame();">Rejouer</button></div>`);
+      return;
+    }
     requestAnimationFrame(step);
   }
   requestAnimationFrame(step);
