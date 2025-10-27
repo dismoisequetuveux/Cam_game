@@ -98,7 +98,7 @@ async function initCamera(){
 async function loadModel(){
   if(!window.tf) await loadScript("https://unpkg.com/@tensorflow/tfjs@3.21.0/dist/tf.min.js");
   if(!window.faceLandmarksDetection) await loadScript("https://unpkg.com/@tensorflow-models/face-landmarks-detection@1.0.6/dist/face-landmarks-detection.min.js");
-  model=await faceLandmarksDetection.load(faceLandmarksDetection.SupportedPackages.mediapipeFacemesh);
+  model = await faceLandmarksDetection.load('mediapipeFacemesh');
   logStep("✅ Modèle chargé !");
 }
 
