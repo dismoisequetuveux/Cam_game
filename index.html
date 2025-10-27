@@ -72,7 +72,7 @@ function show(text){msg.style.display="flex";msg.innerHTML=text;}
 function hideMsg(){msg.style.display="none";}
 function logStep(text){show(`<div>${text}</div>`);console.log(text);}
 
-// Charger un script externe
+// Charger dynamiquement un script
 function loadScript(src){
   return new Promise((res,rej)=>{
     const s=document.createElement('script');
@@ -96,9 +96,19 @@ async function initCamera(){
 }
 
 async function loadModel(){
-  if(!window.tf) await loadScript("https://unpkg.com/@tensorflow/tfjs@3.21.0/dist/tf.min.js");
-  if(!window.faceLandmarksDetection) await loadScript("https://unpkg.com/@tensorflow-models/face-landmarks-detection@1.0.6/dist/face-landmarks-detection.min.js");
-  model = await faceLandmarksDetection.load('mediapipeFacemesh');
+  if(!window.tf)
+    await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.14.0/dist/tf.min.js");
+  if(!window.faceLandmarksDetection)
+    await loadScript("https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection@1.0.5/dist/face-landmarks-detection.min.js");
+
+  model = await faceLandmarksDetection.createDetector(
+    faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh,
+    {
+      runtime: 'mediapipe',
+      solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh'
+    }
+  );
+
   logStep("✅ Modèle chargé !");
 }
 
@@ -142,9 +152,11 @@ async function gameLoop(){
   const startTime=performance.now();
   async function step(now){
     if(!running) return;
-    const preds=await model.estimateFaces({input:video});
+    const preds=await model.estimateFaces(video);
     let landmarks=null;
-    if(preds.length>0) landmarks=preds[0].scaledMesh;
+    if(preds.length>0 && preds[0].keypoints3D){
+      landmarks=preds[0].keypoints.map(p=>[p.x*canvas.width,p.y*canvas.height]);
+    }
     if(landmarks){
       const ratio=mouthOpenRatio(landmarks);
       const [mx,my]=mouthCenter(landmarks);
